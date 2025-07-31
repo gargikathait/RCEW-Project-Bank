@@ -23,6 +23,9 @@ The RCEW Project Bank is designed to streamline the discovery and contribution o
 
 <img width="1438" height="820" alt="browseProject" src="https://github.com/user-attachments/assets/990f50f1-1beb-4355-acb8-9cec9d3360e9" />
 
+<img width="1438" height="820" alt="projectDetails" src="https://github.com/user-attachments/assets/0af41356-6a1d-4c17-bceb-f6df69205a1a" />
+
+
 
 
 ---
