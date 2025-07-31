@@ -2,7 +2,7 @@
 
 A centralized platform to **discover, share, and collaborate** on innovative student projects.
 
->  Empowering Innovation Through **Shared Knowledge**
+
 
 ---
 
