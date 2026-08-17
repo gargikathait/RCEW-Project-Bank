@@ -29,7 +29,7 @@ export default function Register() {
   });
 
   const validateRollNumber = (rollNumber: string): boolean => {
-    // Roll number format: 23ERWCS029 (2 digits + ERW + 2-3 chars department + 3 digits)
+    // Roll number format: 23ERWCS028 (2 digits + ERW + 2-3 chars department + 3 digits)
     const rollNumberPattern = /^\d{2}ERW[A-Z]{2,3}\d{3}$/;
     return rollNumberPattern.test(rollNumber.toUpperCase());
   };
@@ -48,7 +48,7 @@ export default function Register() {
     if (!validateRollNumber(formData.rollNumber)) {
       toast({
         title: "Invalid Roll Number",
-        description: "Roll number must be in format: 23ERWCS029 (e.g., year + ERW + department code + number)",
+        description: "Roll number must be in format: 23ERWCS028 (e.g., year + ERW + department code + number)",
         variant: "destructive",
       });
       setLoading(false);
@@ -244,12 +244,12 @@ export default function Register() {
                   <Label htmlFor="rollNumber">Roll Number *</Label>
                   <Input
                     id="rollNumber"
-                    placeholder="e.g., 23ERWCS029"
+                    placeholder="e.g., 23ERWCS028"
                     value={formData.rollNumber}
                     onChange={(e) => handleInputChange("rollNumber", e.target.value.toUpperCase())}
                     required
                   />
-                  <p className="text-xs text-gray-500">Format: YearERWDepartmentNumber (e.g., 23ERWCS029)</p>
+                  <p className="text-xs text-gray-500">Format: YearERWDepartmentNumber (e.g., 23ERWCS028)</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -1,49 +1,42 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Project, ProjectsResponse, ProjectStatsResponse } from "@shared/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Download, Users, BookOpen, Star, TrendingUp, Calendar, Award } from "lucide-react";
 
 export default function Index() {
-  const recentProjects = [
-    {
-      id: 1,
-      title: "Smart Traffic Management System",
-      author: "Priya Sharma",
-      department: "Computer Science",
-      year: "2024",
-      downloads: 245,
-      rating: 4.8,
-      tags: ["IoT", "Machine Learning", "Python"]
-    },
-    {
-      id: 2,
-      title: "Renewable Energy Optimization",
-      author: "Anitha Kumari",
-      department: "Electrical Engineering",
-      year: "2024",
-      downloads: 189,
-      rating: 4.6,
-      tags: ["Solar", "MATLAB", "Optimization"]
-    },
-    {
-      id: 3,
-      title: "Women Safety Mobile App",
-      author: "Kavya Patel",
-      department: "Information Technology",
-      year: "2023",
-      downloads: 312,
-      rating: 4.9,
-      tags: ["React Native", "GPS", "Security"]
-    }
-  ];
+  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
+  const [stats, setStats] = useState<ProjectStatsResponse["stats"] | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+  const fetchHomeData = async () => {
+    try {
+      const [projectsResponse, statsResponse] = await Promise.all([
+        fetch("/api/projects?sortBy=recent&limit=3"),
+        fetch("/api/projects/stats"),
+      ]);
 
-  const stats = [
-    { label: "Total Projects", value: "1,247", icon: BookOpen },
-    { label: "Active Students", value: "856", icon: Users },
-    { label: "Downloads", value: "15,432", icon: Download },
-    { label: "Years Active", value: "22", icon: Calendar }
-  ];
+      const projectsData: ProjectsResponse = await projectsResponse.json();
+      const statsData: ProjectStatsResponse = await statsResponse.json();
+
+      if (projectsData.success) {
+        setRecentProjects(projectsData.projects);
+      }
+
+      if (statsData.success) {
+        setStats(statsData.stats);
+      }
+    } catch (error) {
+      console.error("Failed to load homepage data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchHomeData();
+}, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-gray-50">
@@ -53,7 +46,7 @@ export default function Index() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <img
-                src="https://cdn.builder.io/api/v1/image/assets%2F348b0cf0cd1044f492a3a092345ae992%2F0f1c1f69ae12496285f964f5ac1b8373?format=webp&width=800"
+                src="/rcewlogo.webp"
                 alt="RCEW Logo"
                 className="w-16 h-16 object-contain"
               />
@@ -96,7 +89,7 @@ export default function Index() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-red-800"> Shared Knowledge</span>
           </h1>
           <p className="text-xl text-gray-600 mb-2 leading-relaxed">
-            Discover, share, and collaborate on cutting-edge projects from brilliant minds at 
+            Discover, share, and collaborate on cutting-edge projects from brilliant minds at
             Rajasthan College of Engineering for Women.
           </p>
           <p className="text-lg text-red-600 font-medium mb-8">Building tomorrow's technology since 2002</p>
@@ -118,19 +111,51 @@ export default function Index() {
       </section>
 
       {/* Stats Section */}
-      <section className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <Card key={index} className="text-center border-0 shadow-lg bg-white/60 backdrop-blur-sm hover:shadow-xl transition-shadow">
-              <CardContent className="p-6">
-                <stat.icon className="w-8 h-8 mx-auto mb-4 text-red-600" />
-                <div className="text-3xl font-bold text-gray-900 mb-2">{stat.value}</div>
-                <div className="text-gray-600">{stat.label}</div>
-              </CardContent>
-            </Card>
-          ))}
+<section className="container mx-auto px-4 py-12">
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+    <Card className="text-center border-0 shadow-lg bg-white/60 backdrop-blur-sm hover:shadow-xl transition-shadow">
+      <CardContent className="p-6">
+        <BookOpen className="w-8 h-8 mx-auto mb-4 text-red-600" />
+        <div className="text-3xl font-bold text-gray-900 mb-2">
+          {loading ? "..." : stats?.total ?? 0}
         </div>
-      </section>
+        <div className="text-gray-600">Total Projects</div>
+      </CardContent>
+    </Card>
+
+    <Card className="text-center border-0 shadow-lg bg-white/60 backdrop-blur-sm hover:shadow-xl transition-shadow">
+      <CardContent className="p-6">
+        <Users className="w-8 h-8 mx-auto mb-4 text-red-600" />
+        <div className="text-3xl font-bold text-gray-900 mb-2">
+          {loading ? "..." : Object.values(stats?.byDepartment ?? {}).reduce((sum, count) => sum + count, 0)}
+        </div>
+        <div className="text-gray-600">Projects by Department</div>
+      </CardContent>
+    </Card>
+
+    <Card className="text-center border-0 shadow-lg bg-white/60 backdrop-blur-sm hover:shadow-xl transition-shadow">
+      <CardContent className="p-6">
+        <Download className="w-8 h-8 mx-auto mb-4 text-red-600" />
+        <div className="text-3xl font-bold text-gray-900 mb-2">
+          {loading ? "..." : stats?.totalDownloads ?? 0}
+        </div>
+        <div className="text-gray-600">Downloads</div>
+      </CardContent>
+    </Card>
+
+    <Card className="text-center border-0 shadow-lg bg-white/60 backdrop-blur-sm hover:shadow-xl transition-shadow">
+      <CardContent className="p-6">
+        <Calendar className="w-8 h-8 mx-auto mb-4 text-red-600" />
+        <div className="text-3xl font-bold text-gray-900 mb-2">
+          {loading ? "..." : Object.keys(stats?.byYear ?? {}).length}
+        </div>
+        <div className="text-gray-600">Years Represented</div>
+      </CardContent>
+    </Card>
+
+  </div>
+</section>
 
       {/* Featured Projects */}
       <section className="container mx-auto px-4 py-16">
@@ -140,7 +165,7 @@ export default function Index() {
             Discover the most innovative and impactful projects from our talented students across different years
           </p>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {recentProjects.map((project) => (
             <Card key={project.id} className="hover:shadow-xl transition-all duration-300 border-0 shadow-lg bg-white/60 backdrop-blur-sm group">
@@ -168,7 +193,7 @@ export default function Index() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {project.tags.map((tag, index) => (
+                  {(project.tags ?? []).map((tag, index) => (
                     <Badge key={index} variant="outline" className="text-xs">
                       {tag}
                     </Badge>
@@ -198,7 +223,7 @@ export default function Index() {
               A comprehensive platform designed to foster innovation and collaboration among engineering students since 2002
             </p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -209,7 +234,7 @@ export default function Index() {
                 Share your projects effortlessly with detailed documentation, source code, and multimedia files
               </p>
             </div>
-            
+
             <div className="text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Calendar className="w-8 h-8 text-white" />
@@ -219,7 +244,7 @@ export default function Index() {
                 Browse projects by academic year and track the evolution of innovation at RCEW
               </p>
             </div>
-            
+
             <div className="text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-red-600 to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Award className="w-8 h-8 text-white" />
@@ -233,26 +258,39 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Year-wise Projects Preview */}
-      <section className="container mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Projects by Year</h2>
-          <p className="text-gray-600">Explore the evolution of innovation at RCEW</p>
-        </div>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {["2024", "2023", "2022", "2021"].map((year) => (
-            <Card key={year} className="text-center hover:shadow-lg transition-all cursor-pointer border-0 shadow-md bg-white/60 backdrop-blur-sm">
-              <CardContent className="p-6">
-                <div className="text-2xl font-bold text-red-600 mb-2">{year}</div>
-                <div className="text-sm text-gray-600">
-                  {year === "2024" ? "245" : year === "2023" ? "312" : year === "2022" ? "198" : "167"} Projects
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
+
+        {/* Year-wise Projects Preview */}
+<section className="container mx-auto px-4 py-16">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 mb-4">
+      Projects by Year
+    </h2>
+    <p className="text-gray-600">
+      Explore the evolution of innovation at RCEW
+    </p>
+  </div>
+
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {Object.entries(stats?.byYear ?? {})
+      .sort(([yearA], [yearB]) => yearB.localeCompare(yearA))
+      .map(([year, count]) => (
+        <Card
+          key={year}
+          className="text-center hover:shadow-lg transition-all cursor-pointer border-0 shadow-md bg-white/60 backdrop-blur-sm"
+        >
+          <CardContent className="p-6">
+            <div className="text-2xl font-bold text-red-600 mb-2">
+              {year}
+            </div>
+
+            <div className="text-sm text-gray-600">
+              {count} Projects
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+  </div>
+</section>
 
       {/* Call to Action */}
       <section className="container mx-auto px-4 py-16 text-center">
@@ -300,7 +338,7 @@ export default function Index() {
                 Empowering the next generation of women engineers through shared knowledge and innovation.
               </p>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Quick Links</h4>
               <ul className="space-y-2 text-gray-400">
@@ -310,7 +348,7 @@ export default function Index() {
                 <li><Link to="/years" className="hover:text-white transition-colors">By Year</Link></li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Student Portal</h4>
               <ul className="space-y-2 text-gray-400">
@@ -320,7 +358,7 @@ export default function Index() {
                 <li><Link to="/my-projects" className="hover:text-white transition-colors">My Projects</Link></li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">College</h4>
               <ul className="space-y-2 text-gray-400">
@@ -331,7 +369,7 @@ export default function Index() {
               </ul>
             </div>
           </div>
-          
+
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
             <p>&copy; 2024 Rajasthan College of Engineering for Women. All rights reserved. | Established 2002</p>
           </div>

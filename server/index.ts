@@ -2,12 +2,13 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { handleDemo } from "./routes/demo";
 import {
   handleRegister,
   handleLogin,
   handleProfile,
   handleUploadPhoto,
+  handleForgotPassword,
+  handleResetPassword,
 } from "./routes/auth";
 import {
   handleGetProjects,
@@ -39,11 +40,12 @@ export function createServer() {
     res.json({ message: ping });
   });
 
-  app.get("/api/demo", handleDemo);
 
   // Authentication routes
   app.post("/api/auth/register", handleRegister);
   app.post("/api/auth/login", handleLogin);
+  app.post("/api/auth/forgot-password", handleForgotPassword);
+  app.post("/api/auth/reset-password", handleResetPassword);
   app.get("/api/auth/profile", handleProfile);
   app.post("/api/auth/upload-photo", handleUploadPhoto);
 

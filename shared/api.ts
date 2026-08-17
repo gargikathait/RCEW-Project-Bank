@@ -65,6 +65,7 @@ export interface Project {
   githubId?: string;
   gmailId?: string;
   views: number;
+  downloads: number;
   rating: number;
   ratings: Array<{ userId: string; rating: number }>;
   files: Array<{ type: string; name: string; originalName?: string; url: string; size: number; mimeType?: string; uploadedAt?: string }>;
