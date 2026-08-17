@@ -7,14 +7,16 @@ interface ProtectedRouteProps {
   children: ReactNode;
   requireAuth?: boolean;
   redirectTo?: string;
+  requiredRoles?: Array<"student" | "faculty" | "admin">;
 }
 
 export function ProtectedRoute({ 
   children, 
   requireAuth = true, 
-  redirectTo = '/login' 
+  redirectTo = '/login',
+  requiredRoles,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -41,6 +43,10 @@ export function ProtectedRoute({
   if (requireAuth && !isAuthenticated) {
     // Redirect to login page with return url
     return <Navigate to={redirectTo} state={{ from: location }} replace />;
+  }
+
+  if (requireAuth && isAuthenticated && requiredRoles?.length && user && !requiredRoles.includes(user.role)) {
+    return <Navigate to="/browse" replace />;
   }
 
   if (!requireAuth && isAuthenticated) {

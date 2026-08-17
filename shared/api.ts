@@ -15,7 +15,9 @@ export interface User {
   profilePhoto?: string;
   githubId?: string;
   gmailId?: string;
+  role: "student" | "faculty" | "admin";
   createdAt: string;
+  lastActiveAt?: string;
 }
 
 export interface RegisterRequest {
@@ -65,7 +67,7 @@ export interface Project {
   views: number;
   rating: number;
   ratings: Array<{ userId: string; rating: number }>;
-  files: Array<{ type: string; name: string; url: string }>;
+  files: Array<{ type: string; name: string; originalName?: string; url: string; size: number; mimeType?: string; uploadedAt?: string }>;
   facultyValidation: "pending" | "approved" | "disapproved";
   facultyComments?: string;
   createdAt: string;
@@ -136,6 +138,7 @@ export interface ProjectFile {
   name: string;
   url: string;
   size: number;
+  mimeType?: string;
   uploadedAt: string;
 }
 

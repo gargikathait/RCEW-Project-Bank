@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import multer from "multer";
 import { handleDemo } from "./routes/demo";
 import {
   handleRegister,
@@ -18,7 +19,11 @@ import {
   handleFacultyValidation,
   handleGetProjectStats,
   handleGetAvailableYears,
+  handleUploadProjectFile,
+  handleServeProjectFile,
+  handleGetAnalytics,
 } from "./routes/projects";
+import { handleStatusEvents } from "./realtime";
 
 export function createServer() {
   const app = express();
@@ -45,13 +50,25 @@ export function createServer() {
   // Projects routes
   app.get("/api/projects", handleGetProjects);
   app.get("/api/projects/stats", handleGetProjectStats);
+  app.get("/api/analytics", handleGetAnalytics);
+  app.get("/api/projects/status/events", handleStatusEvents);
   app.get("/api/projects/years", handleGetAvailableYears);
   app.get("/api/projects/:id", handleGetProject);
   app.post("/api/projects", handleCreateProject);
   app.put("/api/projects/:id", handleUpdateProject);
   app.post("/api/projects/:id/view", handleViewProject);
+  app.post("/api/projects/:id/files", handleUploadProjectFile);
+  app.get("/api/projects/:id/files/:fileName", handleServeProjectFile);
   app.post("/api/projects/:id/rate", handleRateProject);
   app.post("/api/projects/:id/faculty-validation", handleFacultyValidation);
+
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (error instanceof multer.MulterError) {
+      return res.status(400).json({ success: false, message: error.code === "LIMIT_FILE_SIZE" ? "File must be 10MB or smaller" : error.message });
+    }
+    const message = error instanceof Error ? error.message : "Internal server error";
+    res.status(500).json({ success: false, message });
+  });
 
   return app;
 }

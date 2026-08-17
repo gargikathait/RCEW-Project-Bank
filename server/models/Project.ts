@@ -1,27 +1,39 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { HydratedDocument, Model, Schema, Types } from "mongoose";
+
+export type FacultyValidationStatus = "pending" | "approved" | "disapproved";
+export type ProjectFileType = "documentation" | "source" | "media";
 
 export interface IProjectFile {
-  type: 'documentation' | 'source' | 'media';
+  _id?: Types.ObjectId;
+  type: ProjectFileType;
   name: string;
   originalName: string;
+  storageName: string;
+  path: string;
   url: string;
   size: number;
   mimeType: string;
+  uploadedBy: Types.ObjectId;
   uploadedAt: Date;
 }
 
 export interface IRating {
-  userId: string;
+  userId: Types.ObjectId;
   rating: number;
   createdAt: Date;
 }
 
-export interface IProject extends Document {
-  _id: string;
+export interface IProjectView {
+  userId?: Types.ObjectId;
+  sessionId?: string;
+  viewedAt: Date;
+}
+
+export interface IProject {
   title: string;
   description: string;
   author: string;
-  authorId: string;
+  authorId: Types.ObjectId;
   department: string;
   year: string;
   category: string;
@@ -30,221 +42,130 @@ export interface IProject extends Document {
   features?: string;
   supervisor?: string;
   collaborators?: string;
-  repositoryUrl?: string;
+  githubRepo?: string;
+  deployLink?: string;
+  githubId?: string;
+  gmailId?: string;
   downloads: number;
   views: number;
+  viewRecords: IProjectView[];
   rating: number;
   ratings: IRating[];
   files: IProjectFile[];
+  facultyValidation: FacultyValidationStatus;
+  facultyComments?: string;
+  validatedBy?: Types.ObjectId;
+  validatedAt?: Date;
   isPublished: boolean;
   isApproved: boolean;
   createdAt: Date;
   updatedAt: Date;
-  toJSON(): any;
 }
 
-const ProjectFileSchema = new Schema<IProjectFile>({
-  type: {
-    type: String,
-    required: true,
-    enum: ['documentation', 'source', 'media']
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  originalName: {
-    type: String,
-    required: true
-  },
-  url: {
-    type: String,
-    required: true
-  },
-  size: {
-    type: Number,
-    required: true
-  },
-  mimeType: {
-    type: String,
-    required: true
-  },
-  uploadedAt: {
-    type: Date,
-    default: Date.now
-  }
-});
+export interface IProjectMethods {
+  calculateRating(): void;
+}
 
-const RatingSchema = new Schema<IRating>({
-  userId: {
-    type: String,
-    required: true,
-    ref: 'User'
-  },
-  rating: {
-    type: Number,
-    required: true,
-    min: 1,
-    max: 5
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-});
+export type ProjectDocument = HydratedDocument<IProject, IProjectMethods>;
+type ProjectModel = Model<IProject, Record<string, never>, IProjectMethods>;
 
-const ProjectSchema = new Schema<IProject>({
-  title: {
-    type: String,
-    required: [true, 'Project title is required'],
-    trim: true,
-    maxlength: [200, 'Title cannot exceed 200 characters']
+const ProjectFileSchema = new Schema<IProjectFile>(
+  {
+    type: { type: String, required: true, enum: ["documentation", "source", "media"], default: "documentation" },
+    name: { type: String, required: true },
+    originalName: { type: String, required: true },
+    storageName: { type: String, required: true },
+    path: { type: String, required: true, select: false },
+    url: { type: String, required: true },
+    size: { type: Number, required: true, min: 0 },
+    mimeType: { type: String, required: true },
+    uploadedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    uploadedAt: { type: Date, default: Date.now },
   },
-  description: {
-    type: String,
-    required: [true, 'Project description is required'],
-    maxlength: [2000, 'Description cannot exceed 2000 characters']
+  { _id: true },
+);
+
+const RatingSchema = new Schema<IRating>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    rating: { type: Number, required: true, min: 1, max: 5 },
+    createdAt: { type: Date, default: Date.now },
   },
-  author: {
-    type: String,
-    required: [true, 'Author name is required']
+  { _id: false },
+);
+
+const ViewSchema = new Schema<IProjectView>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User" },
+    sessionId: { type: String },
+    viewedAt: { type: Date, default: Date.now },
   },
-  authorId: {
-    type: String,
-    required: [true, 'Author ID is required'],
-    ref: 'User'
+  { _id: false },
+);
+
+const ProjectSchema = new Schema<IProject, ProjectModel, IProjectMethods>(
+  {
+    title: { type: String, required: true, trim: true, maxlength: 200 },
+    description: { type: String, required: true, maxlength: 2000 },
+    author: { type: String, required: true, trim: true },
+    authorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    department: { type: String, required: true, trim: true },
+    year: { type: String, required: true, match: [/^\d{4}$/, "Year must be in YYYY format"] },
+    category: { type: String, required: true, trim: true },
+    level: { type: String, required: true, trim: true },
+    tags: [{ type: String, trim: true, maxlength: 50 }],
+    features: { type: String, maxlength: 1000 },
+    supervisor: { type: String, trim: true, maxlength: 100 },
+    collaborators: { type: String, maxlength: 500 },
+    githubRepo: { type: String, trim: true },
+    deployLink: { type: String, trim: true },
+    githubId: { type: String, trim: true },
+    gmailId: { type: String, trim: true },
+    downloads: { type: Number, default: 0, min: 0 },
+    views: { type: Number, default: 0, min: 0 },
+    viewRecords: [ViewSchema],
+    rating: { type: Number, default: 0, min: 0, max: 5 },
+    ratings: [RatingSchema],
+    files: [ProjectFileSchema],
+    facultyValidation: { type: String, enum: ["pending", "approved", "disapproved"], default: "pending", required: true },
+    facultyComments: { type: String, maxlength: 1000 },
+    validatedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    validatedAt: { type: Date },
+    isPublished: { type: Boolean, default: true },
+    isApproved: { type: Boolean, default: false },
   },
-  department: {
-    type: String,
-    required: [true, 'Department is required'],
-    enum: {
-      values: ['Computer Science Engineering', 'Information Technology', 'Electronics & Communication Engineering', 'Electrical & Electronics Engineering', 'Mechanical Engineering', 'Civil Engineering', 'Chemical Engineering'],
-      message: 'Please select a valid department'
-    }
-  },
-  year: {
-    type: String,
-    required: [true, 'Academic year is required'],
-    match: [/^\d{4}$/, 'Year must be in YYYY format']
-  },
-  category: {
-    type: String,
-    required: [true, 'Category is required'],
-    enum: {
-      values: ['web', 'mobile', 'iot', 'ai', 'robotics', 'data', 'security', 'hardware', 'other'],
-      message: 'Please select a valid category'
-    }
-  },
-  level: {
-    type: String,
-    required: [true, 'Academic level is required'],
-    enum: {
-      values: ['semester', 'minor', 'major', 'thesis', 'internship', 'research'],
-      message: 'Please select a valid academic level'
-    }
-  },
-  tags: [{
-    type: String,
-    trim: true,
-    maxlength: [50, 'Tag cannot exceed 50 characters']
-  }],
-  features: {
-    type: String,
-    maxlength: [1000, 'Features description cannot exceed 1000 characters']
-  },
-  supervisor: {
-    type: String,
-    trim: true,
-    maxlength: [100, 'Supervisor name cannot exceed 100 characters']
-  },
-  collaborators: {
-    type: String,
-    maxlength: [500, 'Collaborators list cannot exceed 500 characters']
-  },
-  repositoryUrl: {
-    type: String,
-    validate: {
-      validator: function(v: string) {
-        if (!v) return true; // Optional field
-        return /^https?:\/\/.+/.test(v);
+  {
+    timestamps: true,
+    toJSON: {
+      transform(_doc, ret: Partial<IProject> & { _id?: Types.ObjectId; id?: string; __v?: number }) {
+        ret.id = ret._id?.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
       },
-      message: 'Repository URL must be a valid URL'
-    }
+    },
   },
-  downloads: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  views: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  rating: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 5
-  },
-  ratings: [RatingSchema],
-  files: [ProjectFileSchema],
-  isPublished: {
-    type: Boolean,
-    default: false
-  },
-  isApproved: {
-    type: Boolean,
-    default: false
-  }
-}, {
-  timestamps: true,
-  toJSON: {
-    transform: function(doc, ret) {
-      ret.id = ret._id;
-      delete ret._id;
-      delete ret.__v;
-      return ret;
-    }
-  }
-});
+);
 
-// Indexes for better query performance
 ProjectSchema.index({ authorId: 1 });
 ProjectSchema.index({ department: 1, year: 1 });
 ProjectSchema.index({ category: 1 });
-ProjectSchema.index({ year: 1 });
-ProjectSchema.index({ isPublished: 1, isApproved: 1 });
-ProjectSchema.index({ tags: 1 });
-ProjectSchema.index({ createdAt: -1 });
-ProjectSchema.index({ downloads: -1 });
-ProjectSchema.index({ rating: -1 });
+ProjectSchema.index({ facultyValidation: 1 });
+ProjectSchema.index({ title: "text", description: "text", tags: "text", author: "text" });
 
-// Text search index for title and description
-ProjectSchema.index({ 
-  title: 'text', 
-  description: 'text', 
-  tags: 'text',
-  author: 'text'
-});
-
-// Calculate average rating when ratings are updated
-ProjectSchema.methods.calculateRating = function() {
-  if (this.ratings.length === 0) {
+ProjectSchema.methods.calculateRating = function () {
+  if (!this.ratings.length) {
     this.rating = 0;
     return;
   }
-  
-  const totalRating = this.ratings.reduce((sum: number, rating: IRating) => sum + rating.rating, 0);
-  this.rating = Math.round((totalRating / this.ratings.length) * 10) / 10;
+  const total = this.ratings.reduce((sum, item) => sum + item.rating, 0);
+  this.rating = Math.round((total / this.ratings.length) * 10) / 10;
 };
 
-// Pre-save middleware to calculate rating
-ProjectSchema.pre('save', function(next) {
-  if (this.isModified('ratings')) {
-    this.calculateRating();
-  }
-  next();
+ProjectSchema.pre("save", function () {
+  this.calculateRating();
+  this.isApproved = this.facultyValidation === "approved";
 });
 
-export const Project = mongoose.model<IProject>('Project', ProjectSchema);
+export const Project =
+  (mongoose.models.Project as ProjectModel | undefined) ?? mongoose.model<IProject, ProjectModel>("Project", ProjectSchema);

@@ -17,19 +17,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const getAuthToken = () => localStorage.getItem('token');
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
     
-    if (token && savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    const restore = async () => {
+      if (token && savedUser && token.split('.').length === 3) {
+        try {
+          const response = await fetch('/api/auth/profile', { headers: { Authorization: `Bearer ${token}` } });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            setUser(data.user);
+            localStorage.setItem('user', JSON.stringify(data.user));
+          } else {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
+        } catch {
+          try { setUser(JSON.parse(savedUser)); } catch { localStorage.removeItem('token'); localStorage.removeItem('user'); }
+        }
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    };
+    restore();
   }, []);
 
   const login = async (credentials: LoginRequest): Promise<AuthResponse> => {

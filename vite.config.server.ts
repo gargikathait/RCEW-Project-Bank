@@ -32,6 +32,10 @@ export default defineConfig({
         // External dependencies that should not be bundled
         "express",
         "cors",
+        "mongoose",
+        "bcryptjs",
+        "jsonwebtoken",
+        "multer",
       ],
       output: {
         format: "es",
@@ -43,7 +47,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./client"),
+      "@": path.resolve(__dirname, "."),
       "@shared": path.resolve(__dirname, "./shared"),
     },
   },
