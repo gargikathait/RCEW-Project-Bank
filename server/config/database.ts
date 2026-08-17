@@ -1,33 +1,43 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/rcew-project-bank';
-
-export const connectDatabase = async (): Promise<void> => {
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('✅ Connected to MongoDB successfully');
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
-  }
+type CachedConnection = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 };
 
-// Handle connection events
-mongoose.connection.on('connected', () => {
-  console.log('📡 Mongoose connected to MongoDB');
-});
+const globalWithMongoose = globalThis as typeof globalThis & {
+  mongooseConnection?: CachedConnection;
+};
 
-mongoose.connection.on('error', (error) => {
-  console.error('❌ Mongoose connection error:', error);
-});
+const cached: CachedConnection = globalWithMongoose.mongooseConnection ?? {
+  conn: null,
+  promise: null,
+};
 
-mongoose.connection.on('disconnected', () => {
-  console.log('📡 Mongoose disconnected from MongoDB');
-});
+globalWithMongoose.mongooseConnection = cached;
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  console.log('📡 MongoDB connection closed through app termination');
-  process.exit(0);
-});
+export async function connectDatabase(): Promise<typeof mongoose> {
+  if (cached.conn) return cached.conn;
+
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    throw new Error("MONGODB_URI is required. Set it in the environment; do not commit secrets.");
+  }
+
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(mongoUri, {
+      bufferCommands: false,
+    });
+  }
+
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+
+export async function disconnectDatabase(): Promise<void> {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.close();
+    cached.conn = null;
+    cached.promise = null;
+  }
+}

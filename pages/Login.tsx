@@ -159,7 +159,7 @@ export default function Login() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
@@ -220,17 +220,7 @@ export default function Login() {
           </CardContent>
         </Card>
 
-        {/* Quick Access for Demo */}
-        <Card className="mt-6 border-0 shadow-lg bg-green-50/80 backdrop-blur-sm">
-          <CardContent className="p-6 text-center">
-            <h4 className="font-semibold text-green-900 mb-2">Quick Demo Access</h4>
-            <p className="text-green-800 mb-4">Test the platform with sample credentials</p>
-            <div className="text-sm text-green-700 space-y-1">
-              <p><strong>Email:</strong> gunjansingla574@gmail.com</p>
-              <p><strong>Password:</strong> Rcew@123</p>
-            </div>
-          </CardContent>
-        </Card>
+
       </div>
     </div>
   );

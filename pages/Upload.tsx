@@ -20,6 +20,7 @@ export default function Upload() {
   const [loading, setLoading] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [currentTag, setCurrentTag] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     department: "",
@@ -129,11 +130,23 @@ export default function Upload() {
       const result = await response.json();
 
       if (result.success) {
+        if (pdfFile) {
+          const fileData = new FormData();
+          fileData.append("file", pdfFile);
+          const uploadResponse = await fetch(`/api/projects/${result.project.id}/files`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+            body: fileData,
+          });
+          const uploadResult = await uploadResponse.json();
+          if (!uploadResult.success) throw new Error(uploadResult.message || "PDF upload failed");
+        }
         toast({
-          title: "Project Uploaded Successfully",
-          description: "Your project has been published and is now available for browsing",
+          title: "Project Submitted Successfully",
+          description: pdfFile ? "Your project and PDF were submitted for faculty review" : "Your project was submitted for faculty review",
         });
-        navigate('/browse');
+        localStorage.removeItem('projectDraft');
+        navigate(`/project/${result.project.id}`);
       } else {
         toast({
           title: "Upload Failed", 
@@ -144,7 +157,7 @@ export default function Upload() {
     } catch (error) {
       toast({
         title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -373,6 +386,33 @@ export default function Upload() {
                   </Button>
                 </div>
                 <p className="text-sm text-gray-500">Press Enter or click Add to include a tag</p>
+              </div>
+
+
+              <div className="space-y-2">
+                <Label htmlFor="pdfFile">Project PDF (optional, max 10MB)</Label>
+                <Input
+                  id="pdfFile"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (file && file.type !== "application/pdf") {
+                      toast({ title: "Invalid File", description: "Please select a PDF file", variant: "destructive" });
+                      event.currentTarget.value = "";
+                      setPdfFile(null);
+                      return;
+                    }
+                    if (file && file.size > 10 * 1024 * 1024) {
+                      toast({ title: "File Too Large", description: "PDF must be 10MB or smaller", variant: "destructive" });
+                      event.currentTarget.value = "";
+                      setPdfFile(null);
+                      return;
+                    }
+                    setPdfFile(file);
+                  }}
+                />
+                <p className="text-sm text-gray-500">Uploaded PDFs are served through an authenticated API endpoint for preview/download.</p>
               </div>
 
               {/* Category */}

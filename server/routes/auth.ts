@@ -1,221 +1,232 @@
 import { RequestHandler } from "express";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { connectDatabase } from "../config/database";
+import { authenticate, getJwtSecret } from "../middleware/auth";
+import { User } from "../models/User";
+import { PasswordResetToken } from "../models/PasswordResetToken";
 
-// Mock user database (in a real app, this would be a proper database)
-const users: Array<{
-  id: string;
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  rollNumber: string;
-  department: string;
-  semester: string;
-  profilePhoto?: string;
-  githubId?: string;
-  gmailId?: string;
-  createdAt: string;
-}> = [
-  {
-    id: "1",
-    email: "testuser@gmail.com",
-    password: "testuser@123", // In real app, this would be hashed
-    firstName: "Test",
-    lastName: "User",
-    rollNumber: "XXERWCSXXX",
-    department: "CSE",
-    semester: "5",
-    createdAt: new Date().toISOString(),
-  },
-];
+const validateRollNumber = (rollNumber: string): boolean => /^\d{2}ERW[A-Z]{2,3}\d{3}$/.test(rollNumber.toUpperCase());
+const safeMessage = (error: unknown) => error instanceof Error ? error.message : "Internal server error";
 
-// Roll number validation function
-const validateRollNumber = (rollNumber: string): boolean => {
-  // Roll number format: 23ERWCS028 (2 digits + ERW + 2-3 chars department + 3 digits)
-  const rollNumberPattern = /^\d{2}ERW[A-Z]{2,3}\d{3}$/;
-  return rollNumberPattern.test(rollNumber.toUpperCase());
-};
-
-// Register new user
-export const handleRegister: RequestHandler = (req, res) => {
+export const handleRegister: RequestHandler = async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      email,
-      rollNumber,
-      department,
-      semester,
-      password,
-    } = req.body;
-
-    // Validate required fields
-    if (
-      !firstName ||
-      !lastName ||
-      !email ||
-      !rollNumber ||
-      !department ||
-      !semester ||
-      !password
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required",
-      });
-    }
-
-    // Validate roll number format
-    if (!validateRollNumber(rollNumber)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid roll number format. Must be like: 23ERWCS028",
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = users.find(
-      (user) =>
-        user.email === email || user.rollNumber === rollNumber.toUpperCase(),
-    );
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User with this email or roll number already exists",
-      });
-    }
-
-    // Create new user
-    const newUser = {
-      id: Date.now().toString(),
-      email,
-      password, // In real app, hash this password
-      firstName,
-      lastName,
-      rollNumber: rollNumber.toUpperCase(),
-      department,
-      semester,
-      createdAt: new Date().toISOString(),
-    };
-
-    users.push(newUser);
-
-    // Return success (without password)
-    const { password: _, ...userWithoutPassword } = newUser;
-    res.json({
-      success: true,
-      message: "User registered successfully",
-      user: userWithoutPassword,
-    });
+    await connectDatabase();
+    const { firstName, lastName, email, rollNumber, department, semester, year, password, confirmPassword } = req.body;
+    if (!firstName || !lastName || !email || !rollNumber || !department || !semester || !password) return res.status(400).json({ success: false, message: "All fields are required" });
+    if (password !== confirmPassword) return res.status(400).json({ success: false, message: "Passwords do not match" });
+    if (!validateRollNumber(rollNumber)) return res.status(400).json({ success: false, message: "Invalid roll number format. Must be like: 23ERWCS028" });
+    const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { rollNumber: rollNumber.toUpperCase() }] });
+    if (existing) return res.status(409).json({ success: false, message: existing.email === email.toLowerCase() ? "Email is already registered" : "Roll number is already registered" });
+    const user = await User.create({ firstName, lastName, name: `${firstName} ${lastName}`, email, rollNumber, department, semester, year: year ?? semester, password, role: "student", lastActiveAt: new Date() });
+    res.status(201).json({ success: true, message: "User registered successfully", user: user.toJSON() });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    res.status(500).json({ success: false, message: safeMessage(error) });
   }
 };
 
-// Login user
-export const handleLogin: RequestHandler = (req, res) => {
+export const handleLogin: RequestHandler = async (req, res) => {
   try {
+    await connectDatabase();
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required" });
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    if (!user || !(await user.comparePassword(password))) return res.status(401).json({ success: false, message: "Invalid email or password" });
+    user.lastActiveAt = new Date();
+    await user.save();
+    const token = jwt.sign({ id: user.id, role: user.role }, getJwtSecret(), { expiresIn: "7d" });
+    res.json({ success: true, message: "Login successful", user: user.toJSON(), token });
+  } catch (error) {
+    res.status(500).json({ success: false, message: safeMessage(error) });
+  }
+};
 
-    // Validate required fields
-    if (!email || !password) {
+export const handleProfile: RequestHandler[] = [authenticate, async (req, res) => {
+  await connectDatabase();
+  const user = await User.findById(req.user!.id);
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+  res.json({ success: true, user: user.toJSON() });
+}];
+
+export const handleUploadPhoto: RequestHandler[] = [authenticate, async (req, res) => {
+  await connectDatabase();
+  const { photo } = req.body;
+  if (typeof photo !== "string" || !photo.startsWith("data:image/") || photo.length > 7_000_000) return res.status(400).json({ success: false, message: "Valid image data under 5MB is required" });
+  const user = await User.findByIdAndUpdate(req.user!.id, { profilePhoto: photo, lastActiveAt: new Date() }, { new: true });
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+  res.json({ success: true, message: "Profile photo updated", user: user.toJSON() });
+}];
+export const handleForgotPassword: RequestHandler = async (req, res) => {
+  try {
+    await connectDatabase();
+
+    const email =
+      typeof req.body.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "Email is required",
       });
     }
 
-    // Find user
-    const user = users.find(
-      (u) => u.email === email && u.password === password,
+    const user = await User.findOne({ email });
+
+    // Do not reveal whether an account exists.
+    if (!user) {
+      return res.json({
+        success: true,
+        message:
+          "If an account exists with this email, password reset instructions have been sent.",
+      });
+    }
+
+    // Invalidate previous unused tokens for this user.
+    await PasswordResetToken.updateMany(
+      {
+        userId: user._id,
+        used: false,
+      },
+      {
+        $set: { used: true },
+      },
     );
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
 
-    // Validate that user has a proper roll number
-    if (!user.rollNumber || !validateRollNumber(user.rollNumber)) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Valid RCEW roll number required.",
-      });
-    }
+    // Generate a cryptographically secure random token.
+    const rawToken = crypto.randomBytes(32).toString("hex");
 
-    // Return success (without password)
-    const { password: _, ...userWithoutPassword } = user;
+    // Store only the hash in MongoDB.
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+    // Token is valid for 15 minutes.
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await PasswordResetToken.create({
+      userId: user._id,
+      tokenHash,
+      expiresAt,
+      used: false,
+    });
+
+    const appUrl =
+      process.env.APP_URL?.replace(/\/$/, "") ||
+      "http://localhost:5173";
+
+    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+    /*
+     * DEVELOPMENT ONLY:
+     *
+     * We return the reset URL so you can test the complete flow locally.
+     *
+     * In production, this URL MUST be sent through your email provider
+     * instead of being returned to the browser.
+     */
     res.json({
       success: true,
-      message: "Login successful",
-      user: userWithoutPassword,
-      token: "mock-jwt-token", // In real app, generate actual JWT
+      message:
+        "If an account exists with this email, password reset instructions have been sent.",
+      ...(process.env.NODE_ENV !== "production" && {
+        resetUrl,
+      }),
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: safeMessage(error),
     });
   }
 };
-
-// Get user profile
-export const handleProfile: RequestHandler = (req, res) => {
+export const handleResetPassword: RequestHandler = async (req, res) => {
   try {
-    // In real app, verify JWT token from Authorization header
-    const userId = "1"; // Mock user ID
+    await connectDatabase();
 
-    const user = users.find((u) => u.id === userId);
-    if (!user) {
-      return res.status(404).json({
+    const { token, password, confirmPassword } = req.body;
+
+    if (!token || !password || !confirmPassword) {
+      return res.status(400).json({
         success: false,
-        message: "User not found",
+        message: "Token, password and confirm password are required",
       });
     }
 
-    const { password: _, ...userWithoutPassword } = user;
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const resetToken = await PasswordResetToken.findOne({
+      tokenHash,
+      used: false,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset link",
+      });
+    }
+
+    const user = await User.findById(resetToken.userId).select("+password");
+
+    if (!user || !user.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset link",
+      });
+    }
+
+    // UserSchema's pre-save hook hashes this password.
+    user.password = password;
+    user.lastActiveAt = new Date();
+
+    await user.save();
+
+    // Make the token unusable immediately.
+    resetToken.used = true;
+    await resetToken.save();
+
+    // Invalidate any other outstanding reset tokens.
+    await PasswordResetToken.updateMany(
+      {
+        userId: user._id,
+        used: false,
+        _id: { $ne: resetToken._id },
+      },
+      {
+        $set: { used: true },
+      },
+    );
+
     res.json({
       success: true,
-      user: userWithoutPassword,
+      message: "Password reset successful. You can now log in.",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Upload profile photo
-export const handleUploadPhoto: RequestHandler = (req, res) => {
-  try {
-    const { photo } = req.body;
-    const userId = "1"; // In real app, get from JWT token
-
-    const user = users.find((u) => u.id === userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Update user's profile photo
-    user.profilePhoto = photo;
-
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({
-      success: true,
-      message: "Profile photo updated successfully",
-      user: userWithoutPassword,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
+      message: safeMessage(error),
     });
   }
 };

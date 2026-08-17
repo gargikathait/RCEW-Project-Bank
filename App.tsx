@@ -1,4 +1,6 @@
 import "./global.css";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
@@ -45,6 +47,18 @@ const App = () => (
               <Login />
             </ProtectedRoute>
           } />
+          <Route path="/forgot-password" element={
+           <ProtectedRoute requireAuth={false}>
+            <ForgotPassword />
+           </ProtectedRoute>
+          } />
+          <Route path="/reset-password" element={
+           <ProtectedRoute requireAuth={false}>
+          <ResetPassword />
+          </ProtectedRoute>
+           }
+          />
+
           <Route path="/project/:id" element={<ProjectDetails />} />
           <Route path="/profile" element={
             <ProtectedRoute>
@@ -60,86 +74,86 @@ const App = () => (
               />
             }
           />
-          <Route 
-            path="/categories" 
+          <Route
+            path="/categories"
             element={
-              <PlaceholderPage 
-                title="Project Categories" 
-                description="Browse projects by category and department" 
+              <PlaceholderPage
+                title="Project Categories"
+                description="Browse projects by category and department"
               />
-            } 
+            }
           />
-          <Route 
-            path="/leaderboard" 
+          <Route
+            path="/leaderboard"
             element={
-              <PlaceholderPage 
-                title="Leaderboard" 
-                description="Top contributors and most popular projects" 
+              <PlaceholderPage
+                title="Leaderboard"
+                description="Top contributors and most popular projects"
               />
-            } 
+            }
           />
-          <Route 
-            path="/help" 
+          <Route
+            path="/help"
             element={
-              <PlaceholderPage 
-                title="Help Center" 
-                description="Guidelines and support for using the project bank" 
+              <PlaceholderPage
+                title="Help Center"
+                description="Guidelines and support for using the project bank"
               />
-            } 
+            }
           />
-          <Route 
-            path="/guidelines" 
+          <Route
+            path="/guidelines"
             element={
-              <PlaceholderPage 
-                title="Submission Guidelines" 
-                description="Rules and best practices for project submissions" 
+              <PlaceholderPage
+                title="Submission Guidelines"
+                description="Rules and best practices for project submissions"
               />
-            } 
+            }
           />
-          <Route 
-            path="/contact" 
+          <Route
+            path="/contact"
             element={
-              <PlaceholderPage 
-                title="Contact Us" 
-                description="Get in touch with the RCEW Project Bank team" 
+              <PlaceholderPage
+                title="Contact Us"
+                description="Get in touch with the RCEW Project Bank team"
               />
-            } 
+            }
           />
-          <Route 
-            path="/feedback" 
+          <Route
+            path="/feedback"
             element={
-              <PlaceholderPage 
-                title="Feedback" 
-                description="Share your thoughts and suggestions" 
+              <PlaceholderPage
+                title="Feedback"
+                description="Share your thoughts and suggestions"
               />
-            } 
+            }
           />
-          <Route 
-            path="/departments" 
+          <Route
+            path="/departments"
             element={
-              <PlaceholderPage 
-                title="Departments" 
-                description="Information about engineering departments at RCEW" 
+              <PlaceholderPage
+                title="Departments"
+                description="Information about engineering departments at RCEW"
               />
-            } 
+            }
           />
-          <Route 
-            path="/faculty" 
+          <Route
+            path="/faculty"
             element={
-              <PlaceholderPage 
-                title="Faculty" 
-                description="Meet our distinguished faculty members" 
+              <PlaceholderPage
+                title="Faculty"
+                description="Meet our distinguished faculty members"
               />
-            } 
+            }
           />
-          <Route 
-            path="/news" 
+          <Route
+            path="/news"
             element={
-              <PlaceholderPage 
-                title="News & Events" 
-                description="Latest updates and events from RCEW" 
+              <PlaceholderPage
+                title="News & Events"
+                description="Latest updates and events from RCEW"
               />
-            } 
+            }
           />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

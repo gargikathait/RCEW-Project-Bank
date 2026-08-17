@@ -1,405 +1,166 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { RequestHandler } from "express";
+import multer from "multer";
+import { Types } from "mongoose";
+import { connectDatabase } from "../config/database";
+import { authenticate, optionalAuthenticate, requireRole } from "../middleware/auth";
+import { FacultyValidationStatus, Project } from "../models/Project";
+import { User } from "../models/User";
+import { emitProjectStatusUpdate } from "../realtime";
 
-// Mock projects database
-const projects: Array<{
-  id: string;
-  title: string;
-  description: string;
-  author: string;
-  authorId: string;
-  department: string;
-  year: string;
-  category: string;
-  level: string;
-  tags: string[];
-  features?: string;
-  supervisor?: string;
-  collaborators?: string;
-  githubRepo?: string;
-  deployLink?: string;
-  githubId?: string;
-  gmailId?: string;
-  views: number;
-  rating: number;
-  ratings: Array<{ userId: string; rating: number }>;
-  files: Array<{ type: string; name: string; url: string }>;
-  facultyValidation: "pending" | "approved" | "disapproved";
-  facultyComments?: string;
-  createdAt: string;
-  updatedAt: string;
-}> = [];
+const uploadDir = path.resolve(process.cwd(), "server/uploads");
+fs.mkdirSync(uploadDir, { recursive: true });
 
-// Get all projects with filtering
-export const handleGetProjects: RequestHandler = (req, res) => {
-  try {
-    const {
-      year,
-      department,
-      category,
-      search,
-      sortBy = "recent",
-      limit = "20",
-      offset = "0",
-    } = req.query;
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(12).toString("hex")}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype !== "application/pdf") return cb(new Error("Only PDF files are allowed"));
+    cb(null, true);
+  },
+});
 
-    let filteredProjects = [...projects];
+const asyncHandler = (handler: RequestHandler): RequestHandler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+const isObjectId = (id: string) => Types.ObjectId.isValid(id);
+const isOwnerOrAdmin = (project: { authorId: unknown }, user: Express.Request["user"]) => user?.role === "admin" || project.authorId?.toString() === user?.id;
 
-    // Apply filters
-    if (year && year !== "all") {
-      filteredProjects = filteredProjects.filter((p) => p.year === year);
-    }
+export const handleGetProjects: RequestHandler = asyncHandler(async (req, res) => {
+  await connectDatabase();
+  const { year, department, category, search, sortBy = "recent", limit = "20", offset = "0" } = req.query;
+  const query: Record<string, unknown> = {};
+  if (year && year !== "all") query.year = year;
+  if (department && department !== "all") query.department = { $regex: String(department), $options: "i" };
+  if (category && category !== "all") query.category = category;
+  if (search) query.$or = ["title", "description", "author", "tags"].map((field) => ({ [field]: { $regex: String(search), $options: "i" } }));
+  const sort: Record<string, 1 | -1> = sortBy === "popular" ? { views: -1 } : sortBy === "rating" ? { rating: -1 } : sortBy === "year" ? { year: -1 } : { createdAt: -1 };
+  const limitNum = Math.min(Math.max(parseInt(String(limit), 10) || 20, 1), 100);
+  const offsetNum = Math.max(parseInt(String(offset), 10) || 0, 0);
+  const [projects, total] = await Promise.all([Project.find(query).sort(sort).skip(offsetNum).limit(limitNum), Project.countDocuments(query)]);
+  res.json({ success: true, projects: projects.map((p) => p.toJSON()), total, hasMore: offsetNum + limitNum < total });
+});
 
-    if (department && department !== "all") {
-      filteredProjects = filteredProjects.filter((p) =>
-        p.department
-          .toLowerCase()
-          .includes((department as string).toLowerCase()),
-      );
-    }
+export const handleGetProject: RequestHandler = asyncHandler(async (req, res) => {
+  await connectDatabase();
+  if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
+  const project = await Project.findById(req.params.id);
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  res.json({ success: true, project: project.toJSON() });
+});
 
-    if (category && category !== "all") {
-      filteredProjects = filteredProjects.filter(
-        (p) => p.category === category,
-      );
-    }
+export const handleCreateProject: RequestHandler[] = [authenticate, asyncHandler(async (req, res) => {
+  await connectDatabase();
+  const user = await User.findById(req.user!.id);
+  if (!user) return res.status(404).json({ success: false, message: "User not found" });
+  const { title, description, department, year, category, level, tags, features, supervisor, collaborators, githubRepo, deployLink, githubId, gmailId } = req.body;
+  if (!title || !description || !department || !year || !category || !level) return res.status(400).json({ success: false, message: "Missing required project fields" });
+  const project = await Project.create({ title, description, department, year, category, level, tags: Array.isArray(tags) ? tags : [], features, supervisor, collaborators, githubRepo, deployLink, githubId, gmailId, author: user.name || `${user.firstName} ${user.lastName}`, authorId: user._id, facultyValidation: "pending" });
+  res.status(201).json({ success: true, message: "Project created successfully", project: project.toJSON() });
+})];
 
-    if (search) {
-      const searchTerm = (search as string).toLowerCase();
-      filteredProjects = filteredProjects.filter(
-        (p) =>
-          p.title.toLowerCase().includes(searchTerm) ||
-          p.description.toLowerCase().includes(searchTerm) ||
-          p.author.toLowerCase().includes(searchTerm) ||
-          p.tags.some((tag) => tag.toLowerCase().includes(searchTerm)),
-      );
-    }
+export const handleUpdateProject: RequestHandler[] = [authenticate, asyncHandler(async (req, res) => {
+  await connectDatabase();
+  if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
+  const project = await Project.findById(req.params.id);
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  if (!isOwnerOrAdmin(project, req.user)) return res.status(403).json({ success: false, message: "You can update only your own projects" });
+  const allowed = ["title", "description", "department", "year", "category", "level", "tags", "features", "supervisor", "collaborators", "githubRepo", "deployLink", "githubId", "gmailId"];
+  for (const key of allowed) if (key in req.body) project.set(key, req.body[key]);
+  project.facultyValidation = "pending";
+  await project.save();
+  res.json({ success: true, message: "Project updated successfully", project: project.toJSON() });
+})];
 
-    // Apply sorting
-    switch (sortBy) {
-      case "popular":
-        filteredProjects.sort((a, b) => b.views - a.views);
-        break;
-      case "rating":
-        filteredProjects.sort((a, b) => b.rating - a.rating);
-        break;
-      case "year":
-        filteredProjects.sort((a, b) => b.year.localeCompare(a.year));
-        break;
-      case "recent":
-      default:
-        filteredProjects.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-        break;
-    }
+export const handleUploadProjectFile: RequestHandler[] = [authenticate, upload.single("file"), asyncHandler(async (req, res) => {
+  await connectDatabase();
+  if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
+  if (!req.file) return res.status(400).json({ success: false, message: "PDF file is required" });
+  const project = await Project.findById(req.params.id).select("+files.path");
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  if (!isOwnerOrAdmin(project, req.user)) return res.status(403).json({ success: false, message: "You can upload files only to your own projects" });
+  project.files.push({ type: "documentation", name: req.file.originalname, originalName: req.file.originalname, storageName: req.file.filename, path: req.file.path, url: `/api/projects/${project.id}/files/${req.file.filename}`, size: req.file.size, mimeType: req.file.mimetype, uploadedBy: new Types.ObjectId(req.user!.id), uploadedAt: new Date() });
+  await project.save();
+  res.status(201).json({ success: true, message: "PDF uploaded successfully", project: project.toJSON() });
+})];
 
-    // Apply pagination
-    const limitNum = parseInt(limit as string);
-    const offsetNum = parseInt(offset as string);
-    const paginatedProjects = filteredProjects.slice(
-      offsetNum,
-      offsetNum + limitNum,
-    );
+export const handleServeProjectFile: RequestHandler[] = [authenticate, asyncHandler(async (req, res) => {
+  await connectDatabase();
+  if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
+  const project = await Project.findById(req.params.id).select("+files.path");
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  const file = project.files.find((f) => f.storageName === req.params.fileName);
+  if (!file) return res.status(404).json({ success: false, message: "File not found" });
+  if (project.facultyValidation !== "approved" && !isOwnerOrAdmin(project, req.user) && !["faculty", "admin"].includes(req.user!.role)) return res.status(403).json({ success: false, message: "Not authorized to access this file" });
+  res.type("application/pdf").sendFile(path.resolve(file.path));
+})];
 
-    res.json({
-      success: true,
-      projects: paginatedProjects,
-      total: filteredProjects.length,
-      hasMore: offsetNum + limitNum < filteredProjects.length,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+export const handleViewProject: RequestHandler[] = [optionalAuthenticate, asyncHandler(async (req, res) => {
+  await connectDatabase();
+  if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
+  const project = await Project.findById(req.params.id);
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const sessionId = req.user ? undefined : (req.headers["x-view-session"] as string) || req.ip;
+  const duplicate = project.viewRecords.some((v) => v.viewedAt > since && (req.user ? v.userId?.toString() === req.user.id : v.sessionId === sessionId));
+  if (!duplicate) { project.views += 1; project.viewRecords.push({ userId: req.user ? new Types.ObjectId(req.user.id) : undefined, sessionId, viewedAt: new Date() }); await project.save(); }
+  res.json({ success: true, message: duplicate ? "View already counted recently" : "View recorded", views: project.views });
+})];
 
-// Get single project
-export const handleGetProject: RequestHandler = (req, res) => {
-  try {
-    const { id } = req.params;
-    const project = projects.find((p) => p.id === id);
+export const handleRateProject: RequestHandler[] = [authenticate, asyncHandler(async (req, res) => {
+  await connectDatabase();
+  const rating = Number(req.body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ success: false, message: "Rating must be between 1 and 5" });
+  const project = await Project.findById(req.params.id);
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  const existing = project.ratings.find((r) => r.userId.toString() === req.user!.id);
+  if (existing) existing.rating = rating; else project.ratings.push({ userId: new Types.ObjectId(req.user!.id), rating, createdAt: new Date() });
+  await project.save();
+  res.json({ success: true, message: "Rating saved", rating: project.rating });
+})];
 
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
+export const handleFacultyValidation: RequestHandler[] = [authenticate, requireRole("faculty", "admin"), asyncHandler(async (req, res) => {
+  await connectDatabase();
+  const { status, comments } = req.body as { status: FacultyValidationStatus; comments?: string };
+  if (!["pending", "approved", "disapproved"].includes(status)) return res.status(400).json({ success: false, message: "Invalid validation status" });
+  const project = await Project.findById(req.params.id);
+  if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+  if (project.authorId.toString() === req.user!.id) return res.status(403).json({ success: false, message: "Faculty cannot approve their own project" });
+  project.facultyValidation = status;
+  project.facultyComments = comments;
+  project.validatedBy = new Types.ObjectId(req.user!.id);
+  project.validatedAt = new Date();
+  await project.save();
+  emitProjectStatusUpdate(project.id, project.facultyValidation, project.facultyComments);
+  res.json({ success: true, message: "Project validation updated", project: project.toJSON() });
+})];
 
-    res.json({
-      success: true,
-      project,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+export const handleGetProjectStats: RequestHandler = asyncHandler(async (_req, res) => {
+  await connectDatabase();
+  const [byYear, byDepartment, byCategory, total, totalDownloads] = await Promise.all([
+    Project.aggregate([{ $group: { _id: "$year", count: { $sum: 1 } } }]),
+    Project.aggregate([{ $group: { _id: "$department", count: { $sum: 1 } } }]),
+    Project.aggregate([{ $group: { _id: "$category", count: { $sum: 1 } } }]),
+    Project.countDocuments(),
+    Project.aggregate([{ $group: { _id: null, downloads: { $sum: "$downloads" } } }]),
+  ]);
+  const toRecord = (rows: Array<{ _id: string; count: number }>) => Object.fromEntries(rows.map((r) => [r._id, r.count]));
+  res.json({ success: true, stats: { byYear: toRecord(byYear), byDepartment: toRecord(byDepartment), byCategory: toRecord(byCategory), total, totalDownloads: totalDownloads[0]?.downloads ?? 0 } });
+});
 
-// Create new project
-export const handleCreateProject: RequestHandler = (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      department,
-      year,
-      category,
-      level,
-      tags,
-      features,
-      supervisor,
-      collaborators,
-      githubRepo,
-      deployLink,
-      githubId,
-      gmailId,
-    } = req.body;
+export const handleGetAvailableYears: RequestHandler = asyncHandler(async (_req, res) => {
+  await connectDatabase();
+  res.json({ success: true, years: await Project.distinct("year") });
+});
 
-    // In real app, get user ID from JWT token
-    const authorId = "123";
-    const author = "Gargi Kathait"; // In real app, get from user database
-
-    const newProject = {
-      id: Date.now().toString(),
-      title,
-      description,
-      author,
-      authorId,
-      department,
-      year,
-      category,
-      level,
-      tags: tags || [],
-      features,
-      supervisor,
-      collaborators,
-      githubRepo,
-      deployLink,
-      githubId,
-      gmailId,
-      views: 0,
-      rating: 0,
-      ratings: [],
-      files: [],
-      facultyValidation: "pending",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    projects.push(newProject);
-
-    res.json({
-      success: true,
-      message: "Project created successfully",
-      project: newProject,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Update project
-export const handleUpdateProject: RequestHandler = (req, res) => {
-  try {
-    const { id } = req.params;
-    const projectIndex = projects.findIndex((p) => p.id === id);
-
-    if (projectIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
-
-    // In real app, check if user owns the project
-    const updatedProject = {
-      ...projects[projectIndex],
-      ...req.body,
-      updatedAt: new Date().toISOString(),
-    };
-
-    projects[projectIndex] = updatedProject;
-
-    res.json({
-      success: true,
-      message: "Project updated successfully",
-      project: updatedProject,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// View project (increment view count)
-export const handleViewProject: RequestHandler = (req, res) => {
-  try {
-    const { id } = req.params;
-    const project = projects.find((p) => p.id === id);
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
-
-    // Increment view count
-    project.views += 1;
-
-    res.json({
-      success: true,
-      message: "View recorded",
-      views: project.views,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Faculty validation
-export const handleFacultyValidation: RequestHandler = (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, comments } = req.body;
-
-    const project = projects.find((p) => p.id === id);
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
-
-    // Update faculty validation
-    project.facultyValidation = status;
-    project.facultyComments = comments;
-    project.updatedAt = new Date().toISOString();
-
-    res.json({
-      success: true,
-      message: "Faculty validation updated successfully",
-      project,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Rate project
-export const handleRateProject: RequestHandler = (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rating } = req.body;
-    const userId = "1"; // In real app, get from JWT token
-
-    const project = projects.find((p) => p.id === id);
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
-
-    // Check if user already rated
-    const existingRatingIndex = project.ratings.findIndex(
-      (r) => r.userId === userId,
-    );
-
-    if (existingRatingIndex >= 0) {
-      // Update existing rating
-      project.ratings[existingRatingIndex].rating = rating;
-    } else {
-      // Add new rating
-      project.ratings.push({ userId, rating });
-    }
-
-    // Recalculate average rating
-    const totalRating = project.ratings.reduce((sum, r) => sum + r.rating, 0);
-    project.rating =
-      Math.round((totalRating / project.ratings.length) * 10) / 10;
-
-    res.json({
-      success: true,
-      message: "Rating submitted successfully",
-      rating: project.rating,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Get projects by year statistics
-export const handleGetProjectStats: RequestHandler = (req, res) => {
-  try {
-    const stats = {
-      byYear: {} as Record<string, number>,
-      byDepartment: {} as Record<string, number>,
-      byCategory: {} as Record<string, number>,
-      total: projects.length,
-      totalViews: projects.reduce((sum, p) => sum + p.views, 0),
-    };
-
-    projects.forEach((project) => {
-      // By year
-      stats.byYear[project.year] = (stats.byYear[project.year] || 0) + 1;
-
-      // By department
-      stats.byDepartment[project.department] =
-        (stats.byDepartment[project.department] || 0) + 1;
-
-      // By category
-      stats.byCategory[project.category] =
-        (stats.byCategory[project.category] || 0) + 1;
-    });
-
-    res.json({
-      success: true,
-      stats,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// Get available years
-export const handleGetAvailableYears: RequestHandler = (req, res) => {
-  try {
-    const years = [...new Set(projects.map((p) => p.year))].sort((a, b) =>
-      b.localeCompare(a),
-    );
-
-    res.json({
-      success: true,
-      years: years,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+export const handleGetAnalytics: RequestHandler[] = [authenticate, requireRole("admin"), asyncHandler(async (_req, res) => {
+  await connectDatabase();
+  const activeSince = new Date(Date.now() - 15 * 60 * 1000);
+  const [totalUsers, activeUsers, totalProjects, totalUploads, totalViews, approvedProjects, pendingProjects, disapprovedProjects] = await Promise.all([
+    User.countDocuments(), User.countDocuments({ lastActiveAt: { $gte: activeSince } }), Project.countDocuments(), Project.aggregate([{ $project: { count: { $size: "$files" } } }, { $group: { _id: null, total: { $sum: "$count" } } }]), Project.aggregate([{ $group: { _id: null, total: { $sum: "$views" } } }]), Project.countDocuments({ facultyValidation: "approved" }), Project.countDocuments({ facultyValidation: "pending" }), Project.countDocuments({ facultyValidation: "disapproved" }),
+  ]);
+  res.json({ success: true, analytics: { totalUsers, activeUsers, totalProjects, totalUploads: totalUploads[0]?.total ?? 0, totalViews: totalViews[0]?.total ?? 0, approvedProjects, pendingProjects, disapprovedProjects, activeUserWindowMinutes: 15 } });
+})];

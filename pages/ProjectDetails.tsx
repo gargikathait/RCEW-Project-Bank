@@ -16,7 +16,8 @@ import {
   Clock,
   Github,
   Globe,
-  Mail
+  Mail,
+  FileText
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,17 +28,34 @@ import { Project, ProjectResponse } from "@shared/api";
 export default function ProjectDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     if (id) {
       fetchProject(id);
-      // Record view when project is loaded
       recordView(id);
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const events = new EventSource("/api/projects/status/events");
+    const onStatus = (event: MessageEvent) => {
+      const data = JSON.parse(event.data);
+      if (data.projectId === id) {
+        setProject(prev => prev ? { ...prev, facultyValidation: data.facultyValidation, facultyComments: data.facultyComments, updatedAt: data.updatedAt } : prev);
+        toast({ title: "Project Status Updated", description: `Faculty status changed to ${data.facultyValidation}` });
+      }
+    };
+    events.addEventListener("project-status", onStatus);
+    events.onerror = () => console.warn("Status event stream disconnected");
+    return () => {
+      events.removeEventListener("project-status", onStatus);
+      events.close();
+    };
+  }, [id, toast]);
 
   const fetchProject = async (projectId: string) => {
     setLoading(true);
@@ -69,8 +87,15 @@ export default function ProjectDetails() {
 
   const recordView = async (projectId: string) => {
     try {
+      const session = localStorage.getItem('viewSession') || crypto.randomUUID();
+      localStorage.setItem('viewSession', session);
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/projects/${projectId}/view`, {
         method: 'POST',
+        headers: {
+          'X-View-Session': session,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       const data = await response.json();
 
@@ -345,6 +370,36 @@ export default function ProjectDetails() {
               </CardContent>
             </Card>
 
+
+            {/* PDF Preview */}
+            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> Project PDF</CardTitle>
+                <CardDescription>Authenticated users can preview uploaded project documentation.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {project.files?.length ? (
+                  isAuthenticated ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-600">{project.files[0].name}</p>
+                      <iframe
+                        title={`${project.title} PDF preview`}
+                        src={`${project.files[0].url}#toolbar=1`}
+                        className="w-full h-[520px] rounded border"
+                      />
+                      <Button asChild variant="outline">
+                        <a href={project.files[0].url} target="_blank" rel="noopener noreferrer">Open PDF</a>
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-600">Sign in to preview or download this PDF.</p>
+                  )
+                ) : (
+                  <p className="text-sm text-gray-600">No PDF has been uploaded for this project yet.</p>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Project Links */}
             {(project.githubRepo || project.deployLink) && (
               <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
@@ -509,8 +564,8 @@ export default function ProjectDetails() {
                   </div>
                 )}
 
-                {/* Faculty can update validation status */}
-                {isAuthenticated && (
+                {/* Faculty/admin can update validation status; backend also enforces this. */}
+                {isAuthenticated && (user?.role === "faculty" || user?.role === "admin") && (
                   <div className="space-y-2">
                     <Button
                       size="sm"
