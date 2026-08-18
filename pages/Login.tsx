@@ -1,10 +1,23 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, LogIn, Mail, Lock, UserPlus } from "lucide-react";
+import {
+  ArrowLeft,
+  LogIn,
+  Mail,
+  Lock,
+  UserPlus,
+  GraduationCap,
+} from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,11 +27,14 @@ export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
+
+  const [loginRole, setLoginRole] = useState<"student" | "faculty">("student");
   const [loading, setLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    rememberMe: false
+    rememberMe: false,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,6 +54,7 @@ export default function Login() {
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (!emailRegex.test(formData.email)) {
       toast({
         title: "Invalid Email",
@@ -52,7 +69,7 @@ export default function Login() {
       const result = await login({
         email: formData.email,
         password: formData.password,
-        rememberMe: formData.rememberMe
+        rememberMe: formData.rememberMe,
       });
 
       if (result.success) {
@@ -60,7 +77,16 @@ export default function Login() {
           title: "Login Successful",
           description: "Welcome back to RCEW Project Bank!",
         });
-        navigate('/browse');
+
+        // Redirect based on the actual role returned by the backend
+        if (
+          result.user?.role === "faculty" ||
+          result.user?.role === "admin"
+        ) {
+          navigate("/faculty");
+        } else {
+          navigate("/browse");
+        }
       } else {
         toast({
           title: "Login Failed",
@@ -79,10 +105,13 @@ export default function Login() {
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
+  const handleInputChange = (
+    field: string,
+    value: string | boolean
+  ) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -99,26 +128,45 @@ export default function Login() {
                   alt="RCEW Logo"
                   className="w-12 h-12 object-contain"
                 />
+
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900">RCEW Project Bank</h1>
-                  <p className="text-sm text-gray-600">Student Sign In</p>
+                  <h1 className="text-xl font-bold text-gray-900">
+                    RCEW Project Bank
+                  </h1>
+
+                  <p className="text-sm text-gray-600">
+                    {loginRole === "faculty"
+                      ? "Faculty Sign In"
+                      : "Student Sign In"}
+                  </p>
                 </div>
               </Link>
             </div>
+
             <nav className="flex items-center gap-6">
-              <Link to="/" className="text-gray-700 hover:text-red-600 transition-colors">
+              <Link
+                to="/"
+                className="text-gray-700 hover:text-red-600 transition-colors"
+              >
                 <ArrowLeft className="w-4 h-4 mr-1 inline" />
                 Home
               </Link>
-              <Link to="/register" className="text-gray-700 hover:text-red-600 transition-colors">
-                Create Account
-              </Link>
+
+              {loginRole === "student" && (
+                <Link
+                  to="/register"
+                  className="text-gray-700 hover:text-red-600 transition-colors"
+                >
+                  Create Account
+                </Link>
+              )}
             </nav>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-12 max-w-md">
+        {/* Logo and heading */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <img
@@ -127,100 +175,187 @@ export default function Login() {
               className="w-20 h-20 object-contain"
             />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to your RCEW Project Bank account</p>
+
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+            Welcome Back
+          </h1>
+
+          <p className="text-gray-600">
+            Sign in to your RCEW Project Bank account
+          </p>
         </div>
 
+        {/* Student / Faculty selector */}
+        <div className="flex gap-2 mb-4">
+          <Button
+            type="button"
+            variant={loginRole === "student" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setLoginRole("student")}
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Student
+          </Button>
+
+          <Button
+            type="button"
+            variant={loginRole === "faculty" ? "default" : "outline"}
+            className="flex-1"
+            onClick={() => setLoginRole("faculty")}
+          >
+            <GraduationCap className="w-4 h-4 mr-2" />
+            Faculty
+          </Button>
+        </div>
+
+        {/* Login card */}
         <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LogIn className="w-5 h-5 text-red-600" />
-              Student Sign In
+              {loginRole === "faculty" ? (
+                <GraduationCap className="w-5 h-5 text-red-600" />
+              ) : (
+                <LogIn className="w-5 h-5 text-red-600" />
+              )}
+
+              {loginRole === "faculty"
+                ? "Faculty Sign In"
+                : "Student Sign In"}
             </CardTitle>
+
             <CardDescription>
-              Enter your email and password. You must have a valid RCEW roll number to access your account.
+              {loginRole === "faculty"
+                ? "Sign in using your faculty account to review and validate student projects."
+                : "Enter your email and password. You must have a valid RCEW roll number to access your account."}
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-4">
+                {/* Email */}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
+
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+
                     <Input
                       id="email"
                       type="email"
-                      placeholder="Enter your email address"
+                      placeholder={
+                        loginRole === "faculty"
+                          ? "Enter your faculty email"
+                          : "Enter your email address"
+                      }
                       className="pl-10"
                       value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("email", e.target.value)
+                      }
                       required
                     />
                   </div>
                 </div>
 
+                {/* Password */}
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
+
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+
                     <Input
                       id="password"
                       type="password"
                       placeholder="Enter your password"
                       className="pl-10"
                       value={formData.password}
-                      onChange={(e) => handleInputChange("password", e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange("password", e.target.value)
+                      }
                       required
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Remember me / Forgot password */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="remember"
                     checked={formData.rememberMe}
-                    onCheckedChange={(checked) => handleInputChange("rememberMe", checked as boolean)}
+                    onCheckedChange={(checked) =>
+                      handleInputChange(
+                        "rememberMe",
+                        checked as boolean
+                      )
+                    }
                   />
+
                   <Label htmlFor="remember" className="text-sm">
                     Remember me
                   </Label>
                 </div>
-                <Link to="/forgot-password" className="text-sm text-red-600 hover:underline">
+
+                <Link
+                  to="/forgot-password"
+                  className="text-sm text-red-600 hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
 
+              {/* Submit */}
               <Button
                 type="submit"
                 size="lg"
                 className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
                 disabled={loading}
               >
-                <LogIn className="w-5 h-5 mr-2" />
-                {loading ? "Signing In..." : "Sign In"}
+                {loginRole === "faculty" ? (
+                  <GraduationCap className="w-5 h-5 mr-2" />
+                ) : (
+                  <LogIn className="w-5 h-5 mr-2" />
+                )}
+
+                {loading
+                  ? "Signing In..."
+                  : loginRole === "faculty"
+                    ? "Sign In as Faculty"
+                    : "Sign In"}
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        {/* Registration Call to Action */}
-        <Card className="mt-6 border-0 shadow-lg bg-blue-50/80 backdrop-blur-sm">
-          <CardContent className="p-6 text-center">
-            <h4 className="font-semibold text-blue-900 mb-2">New to RCEW Project Bank?</h4>
-            <p className="text-blue-800 mb-4">Join our community of innovative students and start sharing your projects</p>
-            <Button variant="outline" asChild className="border-red-600 text-red-600 hover:bg-red-50">
-              <Link to="/register">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Create Account
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Student registration */}
+        {loginRole === "student" && (
+          <Card className="mt-6 border-0 shadow-lg bg-blue-50/80 backdrop-blur-sm">
+            <CardContent className="p-6 text-center">
+              <h4 className="font-semibold text-blue-900 mb-2">
+                New to RCEW Project Bank?
+              </h4>
 
+              <p className="text-blue-800 mb-4">
+                Join our community of innovative students and start
+                sharing your projects
+              </p>
 
+              <Button
+                variant="outline"
+                asChild
+                className="border-red-600 text-red-600 hover:bg-red-50"
+              >
+                <Link to="/register">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create Account
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

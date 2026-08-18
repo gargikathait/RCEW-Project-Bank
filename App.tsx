@@ -1,7 +1,7 @@
 import "./global.css";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
-
+import Faculty from "./pages/Faculty";
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -130,14 +130,13 @@ const App = () => (
             }
           />
           <Route
-            path="/faculty"
-            element={
-              <PlaceholderPage
-                title="Faculty"
-                description="Meet our distinguished faculty members"
-              />
-            }
-          />
+  path="/faculty"
+  element={
+    <ProtectedRoute requiredRoles={["faculty", "admin"]}>
+      <Faculty />
+    </ProtectedRoute>
+  }
+/>
           <Route
             path="/news"
             element={

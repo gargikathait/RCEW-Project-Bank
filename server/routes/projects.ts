@@ -44,6 +44,7 @@ export const handleGetProjects: RequestHandler = asyncHandler(async (req, res) =
   res.json({ success: true, projects: projects.map((p) => p.toJSON()), total, hasMore: offsetNum + limitNum < total });
 });
 
+
 export const handleGetProject: RequestHandler = asyncHandler(async (req, res) => {
   await connectDatabase();
   if (!isObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid project ID" });
@@ -137,6 +138,25 @@ export const handleFacultyValidation: RequestHandler[] = [authenticate, requireR
   emitProjectStatusUpdate(project.id, project.facultyValidation, project.facultyComments);
   res.json({ success: true, message: "Project validation updated", project: project.toJSON() });
 })];
+  
+export const handleGetFacultyProjects: RequestHandler[] = [
+  authenticate,
+  requireRole("faculty", "admin"),
+  asyncHandler(async (_req, res) => {
+    await connectDatabase();
+
+    const projects = await Project.find({
+      facultyValidation: "pending",
+    })
+      .sort({ createdAt: -1 })
+      .populate("authorId", "name email department rollNumber");
+
+    res.json({
+      success: true,
+      projects: projects.map((project) => project.toJSON()),
+    });
+  }),
+];
 
 export const handleGetProjectStats: RequestHandler = asyncHandler(async (_req, res) => {
   await connectDatabase();
