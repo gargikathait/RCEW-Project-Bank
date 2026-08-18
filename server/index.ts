@@ -23,6 +23,7 @@ import {
   handleUploadProjectFile,
   handleServeProjectFile,
   handleGetAnalytics,
+  handleGetFacultyProjects,
 } from "./routes/projects";
 import { handleStatusEvents } from "./realtime";
 
@@ -62,6 +63,7 @@ export function createServer() {
   app.post("/api/projects/:id/files", handleUploadProjectFile);
   app.get("/api/projects/:id/files/:fileName", handleServeProjectFile);
   app.post("/api/projects/:id/rate", handleRateProject);
+  app.get("/api/projects/faculty/pending", handleGetFacultyProjects);
   app.post("/api/projects/:id/faculty-validation", handleFacultyValidation);
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
