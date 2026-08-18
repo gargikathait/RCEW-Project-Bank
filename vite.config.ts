@@ -39,11 +39,9 @@ function expressPlugin(): Plugin {
     name: "express-plugin",
     apply: "serve", // Only apply during development (serve mode)
     async configureServer(server) {
-      const serverUrl = pathToFileURL(path.resolve(__dirname, "server/index.ts")).href;
-      const loadServer = new Function("url", "return import(url)") as (url: string) => Promise<any>;
-      const { createServer } = await loadServer(serverUrl);
-      const app = createServer();
-      server.middlewares.use(app);
-    },
+  const { createServer } = await server.ssrLoadModule("/server/index.ts");
+  const app = createServer();
+  server.middlewares.use(app);
+},
   };
 }
