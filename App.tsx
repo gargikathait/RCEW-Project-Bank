@@ -65,15 +65,7 @@ const App = () => (
               <Profile />
             </ProtectedRoute>
           } />
-          <Route
-            path="/about"
-            element={
-              <PlaceholderPage
-                title="About RCEW"
-                description="Learn more about Rajasthan College of Engineering for Women"
-              />
-            }
-          />
+          
           <Route
             path="/categories"
             element={

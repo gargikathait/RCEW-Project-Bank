@@ -63,9 +63,14 @@ export default function Index() {
               <Link to="/upload" className="text-gray-700 hover:text-red-600 transition-colors">
                 Upload Project
               </Link>
-              <Link to="/about" className="text-gray-700 hover:text-red-600 transition-colors">
-                About
-              </Link>
+             <a
+  href="https://rcew.ac.in/"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="text-gray-700 hover:text-red-600 transition-colors"
+>
+  About
+</a>
               <Button asChild className="bg-red-600 hover:bg-red-700">
                 <Link to="/login">Sign In</Link>
               </Button>
@@ -362,7 +367,14 @@ export default function Index() {
             <div>
               <h4 className="font-semibold mb-4">College</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><Link to="/about" className="hover:text-white transition-colors">About RCEW</Link></li>
+                <a
+  href="https://rcew.ac.in/"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="hover:text-white transition-colors"
+>
+  About RCEW
+</a>
                 <li><Link to="/departments" className="hover:text-white transition-colors">Departments</Link></li>
                 <li><Link to="/faculty" className="hover:text-white transition-colors">Faculty</Link></li>
                 <li><Link to="/contact" className="hover:text-white transition-colors">Contact</Link></li>
